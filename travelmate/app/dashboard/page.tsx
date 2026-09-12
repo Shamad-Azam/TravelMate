@@ -4,15 +4,10 @@ import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
 import Navbar from "@/components/Navbar";
 import DashboardSearchBar from "./DashboardSearchBar";
+import DashboardGreeting from "./DashboardGreeting";
+import { getTimeGreeting } from "@/lib/utils/greeting";
 
 export const dynamic = "force-dynamic";
-
-function getGreeting(): string {
-  const hour = new Date().getHours();
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  return "Good evening";
-}
 
 const BEST_ATTRACTIONS = [
   {
@@ -79,8 +74,7 @@ export default async function DashboardPage() {
   });
 
   const nextTrip = userTrips.length > 0 ? userTrips[0] : null;
-  const firstName = session.name ? session.name.split(" ")[0] : "Shamad";
-  const greeting = getGreeting();
+  const initialGreeting = getTimeGreeting(new Date(), "Asia/Kolkata");
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans overflow-x-hidden">
@@ -110,15 +104,7 @@ export default async function DashboardPage() {
 
           {/* Top Left: Greeting & Search Bar */}
           <div className="relative z-10 max-w-2xl space-y-3 sm:space-y-4">
-            <div>
-              <h1 className="text-2xl sm:text-4xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-                <span>{greeting}, {firstName}</span>
-                <span>👋</span>
-              </h1>
-              <p className="text-xs sm:text-base font-semibold text-slate-700 mt-1">
-                Ready to plan your next adventure?
-              </p>
-            </div>
+            <DashboardGreeting initialGreeting={initialGreeting} name={session.name} />
 
             {/* Floating Tabbed Search Component */}
             <DashboardSearchBar />
