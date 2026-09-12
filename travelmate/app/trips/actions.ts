@@ -31,6 +31,13 @@ export async function saveTripAction(
   const accommodation = String(formData.get("accommodation") || "Hotel").trim();
   const requirements = String(formData.get("requirements") || "").trim();
 
+  const startLocation = String(formData.get("startLocation") || "Delhi").trim();
+  const latitude = formData.get("latitude") ? Number(formData.get("latitude")) : null;
+  const longitude = formData.get("longitude") ? Number(formData.get("longitude")) : null;
+  const destinationType = String(formData.get("destinationType") || "").trim() || null;
+  const placeId = String(formData.get("placeId") || "").trim() || null;
+  const travelStyle = String(formData.get("travelStyle") || "Comfort").trim();
+
   const fieldErrors: Record<string, string> = {};
 
   if (!destination) {
@@ -65,12 +72,20 @@ export async function saveTripAction(
     };
   }
 
+  let createdTripId: string | undefined;
+
   try {
     const trip = await prisma.trip.create({
       data: {
         userId: session.userId,
         destination,
         country,
+        startLocation: startLocation || "Delhi",
+        latitude: latitude && !isNaN(latitude) ? latitude : null,
+        longitude: longitude && !isNaN(longitude) ? longitude : null,
+        destinationType,
+        placeId,
+        travelStyle,
         startDate: new Date(`${startDate}T00:00:00`),
         endDate: new Date(`${endDate}T00:00:00`),
         travelers,
@@ -82,12 +97,17 @@ export async function saveTripAction(
     });
 
     console.log(`[Trips] Trip created: ${trip.id} for user ${session.userId}`);
+    createdTripId = trip.id;
   } catch (error) {
     console.error("[Trips] Failed to save trip:", error);
     return {
       success: false,
       error: "Unable to save your trip right now. Please try again.",
     };
+  }
+
+  if (createdTripId) {
+    redirect(`/trips/${createdTripId}`);
   }
 
   redirect("/dashboard");

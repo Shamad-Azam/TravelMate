@@ -17,6 +17,7 @@ import {
   invalidatePasswordResetToken,
 } from "./verification";
 import { sendVerificationEmail, sendPasswordResetEmail } from "../email";
+import { getAppBaseUrl } from "./google";
 
 export interface AuthActionResult {
   success: boolean;
@@ -80,6 +81,13 @@ export async function loginAction(
   }
 
   // 3. Verify Argon2id password hash
+  if (!user.passwordHash) {
+    return {
+      success: false,
+      error: "This account was registered using Google. Please click 'Continue with Google' to sign in.",
+    };
+  }
+
   let isPasswordValid = false;
   try {
     isPasswordValid = await argon2.verify(user.passwordHash, password);
@@ -234,8 +242,7 @@ export async function signupAction(
   // 5. Generate verification token and send email
   try {
     const token = await createVerificationToken(newUser.id);
-    const appUrl =
-      process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const appUrl = getAppBaseUrl();
     const verificationUrl = `${appUrl}/verify-email?token=${token}`;
 
     await sendVerificationEmail({
@@ -278,9 +285,9 @@ export async function forgotPasswordAction(
 
     if (user) {
       const token = await createPasswordResetToken(user.id);
-      const appUrl =
-        process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      const appUrl = getAppBaseUrl();
       const resetUrl = `${appUrl}/reset-password?token=${token}`;
+
 
       await sendPasswordResetEmail({
         to: user.email,

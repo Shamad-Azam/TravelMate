@@ -3,10 +3,30 @@
 import { useActionState, useState } from "react";
 import Link from "next/link";
 import { loginAction } from "@/lib/auth/actions";
+import GoogleSignInButton from "@/components/GoogleSignInButton";
 
-export default function LoginForm() {
+interface LoginFormProps {
+  oauthError?: string;
+}
+
+const OAUTH_ERROR_MESSAGES: Record<string, string> = {
+  missing_credentials:
+    "Google sign-in is not yet configured. Please add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to your .env.local file.",
+  oauth_cancelled: "Google sign-in was cancelled.",
+  invalid_state: "Security verification failed (state mismatch or expired). Please try again.",
+  code_exchange_failed: "Failed to exchange authorization code with Google. Please try again.",
+  user_info_failed: "Could not retrieve user information from Google. Please try again.",
+  auth_failed: "Unable to complete Google sign-in. Please try again.",
+  invalid_request: "Invalid authentication request from Google. Please try again.",
+};
+
+export default function LoginForm({ oauthError }: LoginFormProps) {
   const [state, formAction, isPending] = useActionState(loginAction, null);
   const [showPassword, setShowPassword] = useState(false);
+
+  const displayOAuthError = oauthError
+    ? OAUTH_ERROR_MESSAGES[oauthError] || "Unable to complete Google sign-in. Please try again."
+    : null;
 
   return (
     <div className="min-h-screen flex flex-col justify-center py-12 sm:px-6 lg:px-8 bg-slate-50">
@@ -48,9 +68,37 @@ export default function LoginForm() {
         </p>
       </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md px-4 sm:px-0">
-        <div className="bg-white py-8 px-5 sm:px-10 shadow-xl shadow-slate-200/60 rounded-2xl sm:rounded-3xl border border-slate-200">
-          {/* Error / Status Alert */}
+      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md px-3 sm:px-0">
+        <div className="bg-white py-6 sm:py-8 px-4 sm:px-10 shadow-xl shadow-slate-200/60 rounded-2xl sm:rounded-3xl border border-slate-200">
+          {/* OAuth Error Alert */}
+          {displayOAuthError && !state?.error && (
+            <div
+              role="alert"
+              aria-live="assertive"
+              className="mb-6 p-4 rounded-xl text-sm border bg-amber-50 border-amber-200 text-amber-900 flex items-start gap-3"
+            >
+              <svg
+                className="w-5 h-5 flex-shrink-0 mt-0.5 text-amber-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3.3 1.732 3z"
+                />
+              </svg>
+              <div>
+                <p className="font-semibold">Google Sign In</p>
+                <p className="mt-0.5 text-xs sm:text-sm leading-relaxed">{displayOAuthError}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Form Error / Status Alert */}
           {state?.error && (
             <div
               role="alert"
@@ -94,7 +142,20 @@ export default function LoginForm() {
             </div>
           )}
 
-          {/* Login Form */}
+          {/* 1. Continue with Google */}
+          <GoogleSignInButton label="Continue with Google" from="login" />
+
+          {/* OR Divider */}
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-200" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase tracking-wider">
+              <span className="bg-white px-3 text-slate-400 font-bold">or</span>
+            </div>
+          </div>
+
+          {/* 2. Email & Password Form */}
           <form action={formAction} className="space-y-5" noValidate>
             {/* Email */}
             <div>
@@ -112,7 +173,7 @@ export default function LoginForm() {
                 autoComplete="email"
                 required
                 placeholder="you@example.com"
-                className={`w-full px-4 py-3 bg-slate-50 focus:bg-white border rounded-xl text-slate-900 text-sm focus:outline-none focus:ring-2 transition-all ${
+                className={`w-full px-4 py-3 bg-slate-50 focus:bg-white border rounded-xl text-slate-900 text-base sm:text-sm focus:outline-none focus:ring-2 transition-all ${
                   state?.fieldErrors?.email
                     ? "border-red-300 focus:border-red-500 focus:ring-red-500/20"
                     : "border-slate-200 focus:border-teal-500 focus:ring-teal-500/20"
@@ -152,7 +213,7 @@ export default function LoginForm() {
                   autoComplete="current-password"
                   required
                   placeholder="Enter your password"
-                  className={`w-full pl-4 pr-11 py-3 bg-slate-50 focus:bg-white border rounded-xl text-slate-900 text-sm focus:outline-none focus:ring-2 transition-all ${
+                  className={`w-full pl-4 pr-11 py-3 bg-slate-50 focus:bg-white border rounded-xl text-slate-900 text-base sm:text-sm focus:outline-none focus:ring-2 transition-all ${
                     state?.fieldErrors?.password
                       ? "border-red-300 focus:border-red-500 focus:ring-red-500/20"
                       : "border-slate-200 focus:border-teal-500 focus:ring-teal-500/20"
@@ -224,12 +285,12 @@ export default function LoginForm() {
                   <span>Signing in...</span>
                 </>
               ) : (
-                <span>Sign In</span>
+                <span>Login</span>
               )}
             </button>
           </form>
 
-          {/* Signup Link */}
+          {/* Footer: Create Account */}
           <div className="mt-6 pt-6 border-t border-slate-100 text-center">
             <p className="text-sm text-slate-600">
               Don’t have an account yet?{" "}
@@ -237,7 +298,7 @@ export default function LoginForm() {
                 href="/signup"
                 className="font-semibold text-teal-600 hover:text-teal-700 hover:underline"
               >
-                Create an account
+                Create Account / Sign Up
               </Link>
             </p>
           </div>

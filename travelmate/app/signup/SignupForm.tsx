@@ -4,12 +4,33 @@ import { useActionState, useState } from "react";
 import Link from "next/link";
 import { signupAction } from "@/lib/auth/actions";
 import { evaluatePasswordStrength } from "@/lib/auth/validation";
+import GoogleSignInButton from "@/components/GoogleSignInButton";
 
-export default function SignupForm() {
+interface SignupFormProps {
+  oauthError?: string;
+}
+
+const OAUTH_ERROR_MESSAGES: Record<string, string> = {
+  missing_credentials:
+    "Google sign-in is not yet configured. Please add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to your .env.local file.",
+  oauth_cancelled: "Google sign-in was cancelled.",
+  invalid_state: "Security verification failed (state mismatch or expired). Please try again.",
+  code_exchange_failed: "Failed to exchange authorization code with Google. Please try again.",
+  user_info_failed: "Could not retrieve user information from Google. Please try again.",
+  auth_failed: "Unable to complete Google sign-in. Please try again.",
+  invalid_request: "Invalid authentication request from Google. Please try again.",
+};
+
+export default function SignupForm({ oauthError }: SignupFormProps) {
   const [state, formAction, isPending] = useActionState(signupAction, null);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+
+  const displayOAuthError = oauthError
+    ? OAUTH_ERROR_MESSAGES[oauthError] || "Unable to complete Google sign-in. Please try again."
+    : null;
+
 
   const strength = evaluatePasswordStrength(password);
 
@@ -66,8 +87,36 @@ export default function SignupForm() {
         </p>
       </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-lg px-4 sm:px-0">
-        <div className="bg-white py-8 px-5 sm:px-10 shadow-xl shadow-slate-200/60 rounded-2xl sm:rounded-3xl border border-slate-200">
+      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-lg px-3 sm:px-0">
+        <div className="bg-white py-6 sm:py-8 px-4 sm:px-10 shadow-xl shadow-slate-200/60 rounded-2xl sm:rounded-3xl border border-slate-200">
+          {/* OAuth Error Alert */}
+          {displayOAuthError && !state?.error && (
+            <div
+              role="alert"
+              aria-live="assertive"
+              className="mb-6 p-4 rounded-xl text-sm border bg-amber-50 border-amber-200 text-amber-900 flex items-start gap-3"
+            >
+              <svg
+                className="w-5 h-5 flex-shrink-0 mt-0.5 text-amber-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3.3 1.732 3z"
+                />
+              </svg>
+              <div>
+                <p className="font-semibold">Google Sign Up</p>
+                <p className="mt-0.5 text-xs sm:text-sm leading-relaxed">{displayOAuthError}</p>
+              </div>
+            </div>
+          )}
+
           {/* Status Alert */}
           {state?.error && (
             <div
@@ -104,6 +153,19 @@ export default function SignupForm() {
             </div>
           )}
 
+          {/* Continue with Google */}
+          <GoogleSignInButton label="Continue with Google" from="signup" />
+
+          {/* OR Divider */}
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-200" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase tracking-wider">
+              <span className="bg-white px-3 text-slate-400 font-bold">or</span>
+            </div>
+          </div>
+
           {/* Form */}
           <form action={formAction} className="space-y-5" noValidate>
             {/* Full Name */}
@@ -123,7 +185,7 @@ export default function SignupForm() {
                 aria-required="true"
                 aria-describedby={state?.fieldErrors?.name ? "name-error" : undefined}
                 placeholder="e.g. Alex Rivera"
-                className={`w-full px-4 py-3 bg-slate-50 focus:bg-white border rounded-xl text-slate-900 text-sm focus:outline-none focus:ring-2 transition-all ${
+                className={`w-full px-4 py-3 bg-slate-50 focus:bg-white border rounded-xl text-slate-900 text-base sm:text-sm focus:outline-none focus:ring-2 transition-all ${
                   state?.fieldErrors?.name
                     ? "border-red-300 focus:border-red-500 focus:ring-red-500/20"
                     : "border-slate-200 focus:border-teal-500 focus:ring-teal-500/20"
@@ -153,7 +215,7 @@ export default function SignupForm() {
                 aria-required="true"
                 aria-describedby={state?.fieldErrors?.email ? "email-error" : undefined}
                 placeholder="you@example.com"
-                className={`w-full px-4 py-3 bg-slate-50 focus:bg-white border rounded-xl text-slate-900 text-sm focus:outline-none focus:ring-2 transition-all ${
+                className={`w-full px-4 py-3 bg-slate-50 focus:bg-white border rounded-xl text-slate-900 text-base sm:text-sm focus:outline-none focus:ring-2 transition-all ${
                   state?.fieldErrors?.email
                     ? "border-red-300 focus:border-red-500 focus:ring-red-500/20"
                     : "border-slate-200 focus:border-teal-500 focus:ring-teal-500/20"
@@ -186,7 +248,7 @@ export default function SignupForm() {
                   aria-required="true"
                   aria-describedby="password-rules"
                   placeholder="Create a strong password"
-                  className={`w-full pl-4 pr-11 py-3 bg-slate-50 focus:bg-white border rounded-xl text-slate-900 text-sm focus:outline-none focus:ring-2 transition-all ${
+                  className={`w-full pl-4 pr-11 py-3 bg-slate-50 focus:bg-white border rounded-xl text-slate-900 text-base sm:text-sm focus:outline-none focus:ring-2 transition-all ${
                     state?.fieldErrors?.password
                       ? "border-red-300 focus:border-red-500 focus:ring-red-500/20"
                       : "border-slate-200 focus:border-teal-500 focus:ring-teal-500/20"
@@ -294,7 +356,7 @@ export default function SignupForm() {
                 required
                 aria-required="true"
                 placeholder="Re-enter your password"
-                className={`w-full px-4 py-3 bg-slate-50 focus:bg-white border rounded-xl text-slate-900 text-sm focus:outline-none focus:ring-2 transition-all ${
+                className={`w-full px-4 py-3 bg-slate-50 focus:bg-white border rounded-xl text-slate-900 text-base sm:text-sm focus:outline-none focus:ring-2 transition-all ${
                   confirmPassword && password !== confirmPassword
                     ? "border-red-300 focus:border-red-500 focus:ring-red-500/20"
                     : "border-slate-200 focus:border-teal-500 focus:ring-teal-500/20"
@@ -340,7 +402,7 @@ export default function SignupForm() {
               <button
                 type="submit"
                 disabled={isPending}
-                className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white font-semibold text-sm shadow-md shadow-teal-600/20 active:scale-[0.99] transition-all flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+                className="w-full py-3.5 px-4 min-h-[48px] rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white font-semibold text-sm shadow-md shadow-teal-600/20 active:scale-[0.99] transition-all flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
               >
                 {isPending ? (
                   <>

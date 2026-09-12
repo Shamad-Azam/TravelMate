@@ -4,12 +4,21 @@ import LoginForm from "./LoginForm";
 
 export const dynamic = "force-dynamic";
 
-export default async function LoginPage() {
+interface LoginPageProps {
+  searchParams: Promise<{
+    error?: string;
+  }>;
+}
+
+export default async function LoginPage({ searchParams }: LoginPageProps) {
   const session = await getSession();
 
   if (session) {
     redirect("/dashboard");
   }
 
-  return <LoginForm />;
+  const params = await searchParams;
+
+  return <LoginForm oauthError={params.error} />;
 }
+
