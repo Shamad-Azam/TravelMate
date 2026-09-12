@@ -1,152 +1,362 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
 import { logoutAction } from "@/lib/auth/actions";
+import { prisma } from "@/lib/db";
+import "./dashboard.css";
+
+const DESTINATION_IMAGES: Record<string, string> = {
+  Manali: "https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?auto=format&fit=crop&w=600&q=80",
+  "Leh-Ladakh": "https://images.unsplash.com/photo-1581793745862-99fde7fa73d2?auto=format&fit=crop&w=600&q=80",
+  Kashmir: "https://images.unsplash.com/photo-1595815771614-ade9d652a65d?auto=format&fit=crop&w=600&q=80",
+  "Spiti Valley": "https://images.unsplash.com/photo-1506197603052-3cc9c3a201bd?auto=format&fit=crop&w=600&q=80",
+  Rishikesh: "https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&w=600&q=80",
+  Pokhara: "https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&w=600&q=80",
+  Kathmandu: "https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&w=600&q=80",
+  "Everest Base Camp": "https://images.unsplash.com/photo-1486870591958-9b9d0d1dda99?auto=format&fit=crop&w=600&q=80",
+};
+
+const DEFAULT_IMAGE =
+  "https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=600&q=80";
+
+const FEATURED_DESTINATIONS = [
+  { name: "Manali", country: "India", image: DESTINATION_IMAGES["Manali"] },
+  { name: "Leh-Ladakh", country: "India", image: DESTINATION_IMAGES["Leh-Ladakh"] },
+  { name: "Kashmir", country: "India", image: DESTINATION_IMAGES["Kashmir"] },
+  { name: "Spiti Valley", country: "India", image: DESTINATION_IMAGES["Spiti Valley"] },
+  { name: "Rishikesh", country: "India", image: DESTINATION_IMAGES["Rishikesh"] },
+  { name: "Pokhara", country: "Nepal", image: DESTINATION_IMAGES["Pokhara"] },
+];
+
+function formatDate(date: Date) {
+  return new Date(date).toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const session = await getSession();
 
+  if (!session) {
+    redirect("/login");
+  }
+
+  // Fetch only this authenticated user's trips
+  const trips = await prisma.trip.findMany({
+    where: { userId: session.userId },
+    orderBy: { startDate: "asc" },
+  });
+
+  const uniqueDestinations = new Set(trips.map((t) => t.destination)).size;
+  const totalBudget = trips.reduce((sum, t) => sum + t.budget, 0);
+  const userInitial = (session.name || "T").charAt(0).toUpperCase();
+
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
-      {/* Top Navigation */}
-      <header className="bg-white border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-teal-600 flex items-center justify-center text-white font-bold text-sm">
-              TM
-            </div>
-            <span className="font-bold text-lg text-slate-900">TravelMate</span>
+    <div className="travel-app">
+      {/* 1. SIDEBAR */}
+      <aside className="sidebar">
+        <div className="brand">
+          <div className="brand-logo">TM</div>
+          <strong>TravelMate</strong>
+        </div>
+
+        <nav className="sidebar-nav">
+          <Link href="/dashboard" className="nav-item active">
+            <span>🧭</span>
+            <strong>Dashboard</strong>
           </Link>
+          <Link href="/trips/new" className="nav-item">
+            <span>✈️</span>
+            <strong>New Trip</strong>
+          </Link>
+        </nav>
 
-          <div className="flex items-center gap-4">
-            {session ? (
-              <form action={logoutAction}>
-                <button
-                  type="submit"
-                  className="px-3.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-xs font-semibold text-slate-700 transition-colors cursor-pointer"
-                >
-                  Secure Logout
-                </button>
-              </form>
-            ) : (
-              <Link
-                href="/login"
-                className="px-3.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold shadow transition-colors"
-              >
-                Sign In
-              </Link>
-            )}
-          </div>
-        </div>
-      </header>
+        <form action={logoutAction} className="logout-form">
+          <button type="submit" className="logout-button flex items-center gap-2">
+            <span>🚪</span>
+            <strong>Sign Out</strong>
+          </button>
+        </form>
+      </aside>
 
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        <div className="mb-8">
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-            Protected Account Center
-          </h1>
-          <p className="mt-1 text-sm text-slate-600">
-            Server-side authorization and session guard architecture
-          </p>
-        </div>
+      {/* 2. MAIN DASHBOARD */}
+      <main className="dashboard-main">
+        {/* Hero Section */}
+        <section className="dashboard-hero">
+          <div className="hero-overlay" />
 
-        {session ? (
-          // Active Session Card
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+          <div className="hero-top">
+            <div className="search-box">
+              <span>🔍</span>
+              <input
+                type="text"
+                placeholder="Search trips, destinations..."
+                readOnly
+              />
+            </div>
+
+            <div className="hero-user">
+              <div className="notification">🔔</div>
+              <div className="avatar">{userInitial}</div>
               <div>
-                <h2 className="text-base font-bold text-slate-900">Session Verified</h2>
-                <p className="text-xs text-slate-500">
-                  Authenticated via secure HttpOnly session cookie
-                </p>
+                <strong>{session.name}</strong>
+                <small>{session.email}</small>
               </div>
-              <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-semibold">
-                Active Session
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-                <span className="text-slate-500 block mb-1">User ID</span>
-                <span className="font-mono font-medium text-slate-800 break-all">{session.userId}</span>
-              </div>
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-                <span className="text-slate-500 block mb-1">Email</span>
-                <span className="font-medium text-slate-800">{session.email}</span>
-              </div>
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-                <span className="text-slate-500 block mb-1">Verification Status</span>
-                <span className="font-medium text-slate-800">
-                  {session.isEmailVerified ? "Verified" : "Pending Verification"}
-                </span>
-              </div>
-            </div>
-
-            <div className="pt-2 flex justify-end">
-              <form action={logoutAction}>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-medium text-sm transition-colors cursor-pointer"
-                >
-                  Terminate Session & Logout
-                </button>
-              </form>
             </div>
           </div>
-        ) : (
-          // Unauthenticated State (Security Architecture Demonstration)
-          <div className="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm space-y-6">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center flex-shrink-0">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-                  />
-                </svg>
-              </div>
+
+          <div className="hero-content">
+            <span className="eyebrow">TRAVELMATE DASHBOARD</span>
+            <h1>Welcome back, {session.name}! ✈️</h1>
+            <p>
+              Plan your journeys, explore destinations, and manage your upcoming travel adventures.
+            </p>
+
+            <div className="quote-card">
+              <span className="text-xl">🏔️</span>
               <div>
-                <h2 className="text-lg font-bold text-slate-900">Protected Route Demonstration</h2>
-                <p className="text-xs text-slate-500">
-                  No active HttpOnly session cookie was detected on the incoming server request.
+                <strong className="block text-[11px] text-teal-800">
+                  Explorer Mindset
+                </strong>
+                <p className="text-[10px] text-slate-600 m-0">
+                  “The mountains are calling and I must go.” — John Muir
                 </p>
               </div>
             </div>
-
-            <div className="bg-slate-50 rounded-xl p-5 border border-slate-200/80 text-xs space-y-3">
-              <h3 className="font-semibold text-slate-800">How Protected Routes Work in TravelMate:</h3>
-              <ul className="space-y-1.5 list-disc pl-4 text-slate-600 leading-relaxed">
-                <li>
-                  <strong className="text-slate-700">Server-Side Authorization:</strong> The server inspects incoming HttpOnly request cookies before rendering private data.
-                </li>
-                <li>
-                  <strong className="text-slate-700">Zero Client Exposure:</strong> Tokens are never accessible to client-side scripts, completely eliminating localStorage token theft via XSS.
-                </li>
-                <li>
-                  <strong className="text-slate-700">Session Invalidation:</strong> Logging out explicitly destroys the cookie with `maxAge: 0` and invalidates the session signature.
-                </li>
-              </ul>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-3 pt-2">
-              <Link
-                href="/login"
-                className="px-6 py-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-semibold text-sm text-center shadow transition-colors"
-              >
-                Go to Sign In
-              </Link>
-              <Link
-                href="/signup"
-                className="px-6 py-3 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-sm text-center transition-colors"
-              >
-                Create Account
-              </Link>
-            </div>
           </div>
-        )}
+        </section>
+
+        {/* Quick Stats Grid */}
+        <section className="stats-grid">
+          <div className="stat-card">
+            <div className="stat-icon">🧳</div>
+            <strong>{trips.length}</strong>
+            <span>Saved Trips</span>
+            <small>Active in your account</small>
+          </div>
+
+          <div className="stat-card">
+            <div className="stat-icon">📍</div>
+            <strong>{uniqueDestinations}</strong>
+            <span>Destinations</span>
+            <small>Places on your itinerary</small>
+          </div>
+
+          <div className="stat-card">
+            <div className="stat-icon">👥</div>
+            <strong>
+              {trips.reduce((sum, t) => sum + t.travelers, 0)}
+            </strong>
+            <span>Travelers</span>
+            <small>Across planned journeys</small>
+          </div>
+
+          <div className="stat-card">
+            <div className="stat-icon">💰</div>
+            <strong>
+              ₹{totalBudget.toLocaleString("en-IN")}
+            </strong>
+            <span>Total Budget</span>
+            <small>Planned travel funds</small>
+          </div>
+        </section>
+
+        {/* Trips Section */}
+        <section className="content-section" style={{ marginTop: "32px" }}>
+          <div className="section-heading flex items-center justify-between">
+            <div>
+              <h2>My Saved Trips 🧳</h2>
+              <p>Your upcoming itineraries and planned travel adventures.</p>
+            </div>
+            <Link
+              href="/trips/new"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-sm transition-all"
+            >
+              + Create New Trip
+            </Link>
+          </div>
+
+          {trips.length === 0 ? (
+            <div
+              style={{
+                background: "white",
+                borderRadius: "18px",
+                border: "1px dashed #cde0e8",
+                padding: "48px 24px",
+                textAlign: "center",
+                marginTop: "16px",
+              }}
+            >
+              <div
+                style={{
+                  width: "64px",
+                  height: "64px",
+                  borderRadius: "20px",
+                  background: "#e8f7fa",
+                  color: "#0090a8",
+                  fontSize: "32px",
+                  display: "grid",
+                  placeItems: "center",
+                  margin: "0 auto 16px",
+                }}
+              >
+                🧳
+              </div>
+              <h3 style={{ fontSize: "18px", fontWeight: 800, margin: "0 0 6px", color: "#122a45" }}>
+                No trips yet
+              </h3>
+              <p style={{ fontSize: "12px", color: "#62788e", maxWidth: "380px", margin: "0 auto 20px" }}>
+                You haven&apos;t planned any journeys yet. Choose your destination, travel dates, and budget to create your first adventure!
+              </p>
+              <Link
+                href="/trips/new"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "12px 24px",
+                  borderRadius: "12px",
+                  background: "linear-gradient(135deg, #00b5c4, #007796)",
+                  color: "white",
+                  fontSize: "12px",
+                  fontWeight: 800,
+                  textDecoration: "none",
+                  boxShadow: "0 8px 20px rgba(0, 140, 165, 0.25)",
+                }}
+              >
+                Create Your First Trip ✈️
+              </Link>
+            </div>
+          ) : (
+            <div className="trip-grid" style={{ marginTop: "16px" }}>
+              {trips.map((trip) => {
+                const img = DESTINATION_IMAGES[trip.destination] || DEFAULT_IMAGE;
+                return (
+                  <div key={trip.id} className="trip-card">
+                    <div className="trip-image">
+                      <img src={img} alt={trip.destination} />
+                      <span>{trip.country || "India"}</span>
+                    </div>
+                    <div className="trip-info">
+                      <h3>{trip.destination}</h3>
+                      <p>
+                        📅 {formatDate(trip.startDate)} - {formatDate(trip.endDate)}
+                      </p>
+                      <div>
+                        <span>👥 {trip.travelers} {trip.travelers === 1 ? "traveler" : "travelers"}</span>
+                        <strong style={{ color: "#008499" }}>₹{trip.budget.toLocaleString("en-IN")}</strong>
+                      </div>
+                      <div style={{ marginTop: "6px", paddingTop: "6px", borderTop: "1px solid #edf3f6" }}>
+                        <span style={{ color: "#008f7a", fontWeight: 700 }}>
+                          {trip.travelTypes || "Adventure"}
+                        </span>
+                        <span style={{ color: "#7a8e9e" }}>
+                          {trip.accommodation || "Hotel"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* Featured Destinations */}
+        <section className="content-section" style={{ marginTop: "32px", marginBottom: "40px" }}>
+          <div className="section-heading">
+            <h2>Explore Top Destinations 🏔️</h2>
+            <p>Popular destinations for your next Himalayan or cultural escape.</p>
+          </div>
+
+          <div className="destination-grid" style={{ marginTop: "14px" }}>
+            {FEATURED_DESTINATIONS.map((dest) => (
+              <Link
+                key={dest.name}
+                href="/trips/new"
+                className="destination-card"
+                style={{ textDecoration: "none", color: "inherit", display: "block" }}
+              >
+                <img src={dest.image} alt={dest.name} />
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    background: "linear-gradient(to top, rgba(1, 26, 45, 0.85) 0%, transparent 60%)",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "flex-end",
+                    padding: "8px",
+                    color: "white",
+                  }}
+                >
+                  <strong style={{ fontSize: "11px", fontWeight: 800 }}>{dest.name}</strong>
+                  <span style={{ fontSize: "8px", opacity: 0.85 }}>{dest.country}</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
       </main>
+
+      {/* 3. RIGHT PANEL / QUICK ACTIONS */}
+      <aside className="planner">
+        <div className="planner-cover">
+          <div className="planner-title">
+            <h1>Travel Hub</h1>
+            <p>Adventure & Trip Center</p>
+          </div>
+        </div>
+
+        <div className="planner-body" style={{ marginTop: "-20px" }}>
+          <div style={{ textAlign: "center", padding: "12px 6px" }}>
+            <div
+              style={{
+                width: "44px",
+                height: "44px",
+                borderRadius: "14px",
+                background: "#e5f8fa",
+                color: "#009cb0",
+                display: "grid",
+                placeItems: "center",
+                fontSize: "20px",
+                margin: "0 auto 10px",
+              }}
+            >
+              🧭
+            </div>
+            <h3 style={{ fontSize: "13px", fontWeight: 800, margin: "0 0 4px", color: "#142d48" }}>
+              Ready for a New Trip?
+            </h3>
+            <p style={{ fontSize: "9px", color: "#697e90", lineHeight: 1.4, margin: "0 0 14px" }}>
+              Set your travel dates, specify your budget, and build your custom itinerary.
+            </p>
+            <Link
+              href="/trips/new"
+              className="generate-button"
+              style={{ textDecoration: "none" }}
+            >
+              <span>+ Plan New Journey</span>
+            </Link>
+          </div>
+
+          <div style={{ marginTop: "16px", paddingTop: "14px", borderTop: "1px solid #edf4f7" }}>
+            <h4 style={{ fontSize: "10px", fontWeight: 800, color: "#1b334c", margin: "0 0 8px" }}>
+              TravelMate Travel Tips 💡
+            </h4>
+            <ul style={{ paddingLeft: "16px", margin: 0, fontSize: "8px", color: "#617688", lineHeight: 1.6 }}>
+              <li>Acclimatize properly above 2,500m in Ladakh and Spiti.</li>
+              <li>Always check local weather and road conditions before departure.</li>
+              <li>Keep offline digital copies of your permits and ID cards.</li>
+              <li>Carry sufficient cash when traveling to high Himalayan valleys.</li>
+            </ul>
+          </div>
+        </div>
+      </aside>
     </div>
   );
 }

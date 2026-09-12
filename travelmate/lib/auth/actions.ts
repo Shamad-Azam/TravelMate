@@ -1,13 +1,22 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import * as argon2 from "argon2";
+import { prisma } from "@/lib/db";
 import {
   validateEmail,
   validatePassword,
   validateName,
 } from "./validation";
 import { SECURITY_MESSAGES } from "./security";
-import { destroySession } from "./session";
+import { createSession, destroySession } from "./session";
+import {
+  createVerificationToken,
+  createPasswordResetToken,
+  verifyPasswordResetToken,
+  invalidatePasswordResetToken,
+} from "./verification";
+import { sendVerificationEmail, sendPasswordResetEmail } from "../email";
 
 export interface AuthActionResult {
   success: boolean;
@@ -19,16 +28,18 @@ export interface AuthActionResult {
 
 /**
  * Server Action: Login
- * Performs server-side validation and secure authentication.
+ * Validates credentials, verifies Argon2id hash against PostgreSQL,
+ * enforces email verification, sets an HttpOnly session cookie, and redirects.
  */
 export async function loginAction(
   _prevState: AuthActionResult | null,
   formData: FormData
 ): Promise<AuthActionResult> {
-  const email = (formData.get("email") as string) || "";
+  const rawEmail = (formData.get("email") as string) || "";
   const password = (formData.get("password") as string) || "";
+  const email = rawEmail.trim().toLowerCase();
 
-  // 1. Server-side input validation
+  // 1. Validate inputs
   const emailCheck = validateEmail(email);
   if (!emailCheck.isValid) {
     return {
@@ -46,49 +57,92 @@ export async function loginAction(
     };
   }
 
-  // 2. Production Database Check
-  // We do NOT fake or mock authentication without a real database.
-  const isDbConfigured = Boolean(process.env.DATABASE_URL);
-
-  if (!isDbConfigured) {
+  // 2. Query user from database
+  let user;
+  try {
+    user = await prisma.user.findUnique({
+      where: { email },
+    });
+  } catch (error) {
+    console.error("[Auth] Login database query error:", error);
     return {
       success: false,
-      error:
-        "Database is not configured yet. Active authentication requires DATABASE_URL and SESSION_SECRET in your environment.",
-      code: "DB_NOT_CONFIGURED",
+      error: "Unable to connect to service. Please try again.",
     };
   }
 
-  // 3. Database Authentication Logic (Executed when DB is connected)
-  // - Query user by email
-  // - Compare password hash using Argon2id
-  // - Check if account is locked or requires 2FA
-  // - Set HttpOnly session cookie
-  // - In case of wrong password, return generic: SECURITY_MESSAGES.INVALID_CREDENTIALS
+  // Generic rejection if user does not exist
+  if (!user) {
+    return {
+      success: false,
+      error: SECURITY_MESSAGES.INVALID_CREDENTIALS,
+    };
+  }
 
-  return {
-    success: false,
-    error: SECURITY_MESSAGES.INVALID_CREDENTIALS,
-  };
+  // 3. Verify Argon2id password hash
+  let isPasswordValid = false;
+  try {
+    isPasswordValid = await argon2.verify(user.passwordHash, password);
+  } catch (error) {
+    console.error("[Auth] Argon2 verify error:", error);
+    return {
+      success: false,
+      error: SECURITY_MESSAGES.INVALID_CREDENTIALS,
+    };
+  }
+
+  if (!isPasswordValid) {
+    return {
+      success: false,
+      error: SECURITY_MESSAGES.INVALID_CREDENTIALS,
+    };
+  }
+
+  // 4. Enforce email verification
+  if (!user.isEmailVerified) {
+    return {
+      success: false,
+      error:
+        "Please verify your email address before logging in. A verification link was sent to your email.",
+      code: "EMAIL_NOT_VERIFIED",
+    };
+  }
+
+  // 5. Create database-backed session & HttpOnly cookie
+  try {
+    await createSession(user.id);
+  } catch (error) {
+    console.error("[Auth] Session creation error:", error);
+    return {
+      success: false,
+      error: "Failed to establish secure session. Please try again.",
+    };
+  }
+
+  redirect("/dashboard");
 }
 
 /**
  * Server Action: Sign Up (Registration)
- * Enforces strong password policy, data integrity, and verification flow.
+ * Enforces validation, Argon2id password hashing, creates user in PostgreSQL,
+ * generates verification token, sends verification email, and redirects to verification page.
  */
 export async function signupAction(
   _prevState: AuthActionResult | null,
   formData: FormData
 ): Promise<AuthActionResult> {
-  const name = (formData.get("name") as string) || "";
-  const email = (formData.get("email") as string) || "";
+  const rawName = (formData.get("name") as string) || "";
+  const rawEmail = (formData.get("email") as string) || "";
   const password = (formData.get("password") as string) || "";
   const confirmPassword = (formData.get("confirmPassword") as string) || "";
   const terms = formData.get("terms") === "on";
 
+  const name = rawName.trim();
+  const email = rawEmail.trim().toLowerCase();
+
   const fieldErrors: Record<string, string> = {};
 
-  // 1. Server-side validation
+  // 1. Validation
   const nameCheck = validateName(name);
   if (!nameCheck.isValid && nameCheck.error) {
     fieldErrors.name = nameCheck.error;
@@ -109,7 +163,8 @@ export async function signupAction(
   }
 
   if (!terms) {
-    fieldErrors.terms = "You must accept the Terms and Privacy Policy to create an account.";
+    fieldErrors.terms =
+      "You must accept the Terms and Privacy Policy to create an account.";
   }
 
   if (Object.keys(fieldErrors).length > 0) {
@@ -120,39 +175,92 @@ export async function signupAction(
     };
   }
 
-  // 2. Production Database Check
-  const isDbConfigured = Boolean(process.env.DATABASE_URL);
+  // 2. Check for duplicate email
+  try {
+    const existingUser = await prisma.user.findUnique({
+      where: { email },
+    });
 
-  if (!isDbConfigured) {
+    if (existingUser) {
+      return {
+        success: false,
+        error: "An account with this email address already exists.",
+        fieldErrors: {
+          email: "An account with this email already exists.",
+        },
+      };
+    }
+  } catch (error) {
+    console.error("[Auth] Duplicate check database error:", error);
     return {
       success: false,
-      error:
-        "Database is not configured yet. Sign-up cannot persist user records until DATABASE_URL is set in your environment.",
-      code: "DB_NOT_CONFIGURED",
+      error: "Database error. Please try again later.",
     };
   }
 
-  // 3. Active Registration (when DB connected)
-  // - Hash password with Argon2id
-  // - Insert user into DB with emailVerified = false
-  // - Generate secure token and send verification email
-  // - Redirect to /verify-email?sent=true
+  // 3. Hash password using Argon2id
+  let passwordHash: string;
+  try {
+    passwordHash = await argon2.hash(password, {
+      type: argon2.argon2id,
+    });
+  } catch (error) {
+    console.error("[Auth] Argon2 hash error:", error);
+    return {
+      success: false,
+      error: "Error securing password. Please try again.",
+    };
+  }
 
-  return {
-    success: true,
-    message: "Registration successful. Please verify your email to continue.",
-  };
+  // 4. Create user in database
+  let newUser;
+  try {
+    newUser = await prisma.user.create({
+      data: {
+        name,
+        email,
+        passwordHash,
+        isEmailVerified: false,
+      },
+    });
+  } catch (error) {
+    console.error("[Auth] User creation error:", error);
+    return {
+      success: false,
+      error: "Failed to create account. Please try again.",
+    };
+  }
+
+  // 5. Generate verification token and send email
+  try {
+    const token = await createVerificationToken(newUser.id);
+    const appUrl =
+      process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const verificationUrl = `${appUrl}/verify-email?token=${token}`;
+
+    await sendVerificationEmail({
+      to: email,
+      name,
+      verificationUrl,
+    });
+  } catch (error) {
+    console.error("[Auth] Failed to send verification email:", error);
+    // Proceed to redirect user so they can view the verification instructions or request a resend
+  }
+
+  redirect(`/verify-email?email=${encodeURIComponent(email)}`);
 }
 
 /**
  * Server Action: Forgot Password
- * Implements anti-enumeration: Always returns success message to prevent user discovery.
+ * Generates single-use token, sends reset email, implements anti-enumeration defense.
  */
 export async function forgotPasswordAction(
   _prevState: AuthActionResult | null,
   formData: FormData
 ): Promise<AuthActionResult> {
-  const email = (formData.get("email") as string) || "";
+  const rawEmail = (formData.get("email") as string) || "";
+  const email = rawEmail.trim().toLowerCase();
 
   const emailCheck = validateEmail(email);
   if (!emailCheck.isValid) {
@@ -163,19 +271,28 @@ export async function forgotPasswordAction(
     };
   }
 
-  const isEmailConfigured = Boolean(
-    process.env.RESEND_API_KEY || process.env.EMAIL_SERVER_HOST
-  );
+  try {
+    const user = await prisma.user.findUnique({
+      where: { email },
+    });
 
-  if (!isEmailConfigured) {
-    // Log safe diagnostic on the server only, never expose to client
-    console.info(
-      "[Auth Security] Forgot password requested for email. Email provider is not configured in environment variables."
-    );
+    if (user) {
+      const token = await createPasswordResetToken(user.id);
+      const appUrl =
+        process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      const resetUrl = `${appUrl}/reset-password?token=${token}`;
+
+      await sendPasswordResetEmail({
+        to: user.email,
+        name: user.name,
+        resetUrl,
+      });
+    }
+  } catch (error) {
+    console.error("[Auth] Forgot password error:", error);
   }
 
-  // Anti-enumeration: Regardless of whether the user exists or email provider is active,
-  // return a generic success message so attackers cannot probe for existing accounts.
+  // Anti-enumeration: always return generic confirmation
   return {
     success: true,
     message: SECURITY_MESSAGES.GENERIC_FORGOT_PASSWORD,
@@ -184,7 +301,8 @@ export async function forgotPasswordAction(
 
 /**
  * Server Action: Reset Password
- * Verifies single-use token and updates password.
+ * Verifies single-use reset token, hashes new password with Argon2id,
+ * updates user record, and invalidates active sessions.
  */
 export async function resetPasswordAction(
   _prevState: AuthActionResult | null,
@@ -205,7 +323,9 @@ export async function resetPasswordAction(
   if (!passwordCheck.isValid) {
     return {
       success: false,
-      error: passwordCheck.error || "New password does not meet security requirements.",
+      error:
+        passwordCheck.error ||
+        "New password does not meet security requirements.",
       fieldErrors: { newPassword: passwordCheck.error || "Weak password." },
     };
   }
@@ -218,27 +338,52 @@ export async function resetPasswordAction(
     };
   }
 
-  const isDbConfigured = Boolean(process.env.DATABASE_URL);
-  if (!isDbConfigured) {
+  try {
+    const userId = await verifyPasswordResetToken(token);
+
+    if (!userId) {
+      return {
+        success: false,
+        error: SECURITY_MESSAGES.TOKEN_EXPIRED_OR_INVALID,
+      };
+    }
+
+    const passwordHash = await argon2.hash(newPassword, {
+      type: argon2.argon2id,
+    });
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash },
+    });
+
+    await invalidatePasswordResetToken(token);
+
+    // Invalidate all existing sessions for this user
+    await prisma.session.deleteMany({
+      where: { userId },
+    });
+
+    return {
+      success: true,
+      message:
+        "Your password has been successfully reset. You can now log in.",
+    };
+  } catch (error) {
+    console.error("[Auth] Reset password error:", error);
     return {
       success: false,
-      error:
-        "Database is not configured yet. Password reset requires an active database connection.",
-      code: "DB_NOT_CONFIGURED",
+      error: "Unable to reset password. Please request a new link.",
     };
   }
-
-  return {
-    success: true,
-    message: "Your password has been successfully reset. You can now log in.",
-  };
 }
 
 /**
  * Server Action: Logout
- * Invalidates session cookie securely and redirects.
+ * Invalidates session in database, deletes session cookie, and redirects to /login.
  */
 export async function logoutAction(): Promise<void> {
   await destroySession();
   redirect("/login");
 }
+
