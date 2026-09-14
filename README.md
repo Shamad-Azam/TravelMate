@@ -117,3 +117,6 @@ Landing Page
      +----> AI Travel Agent
      |
      +----> Find Travel Buddy
+## Development
+
+TravelMate is actively developed with a focus on improving travel planning and user experience.
